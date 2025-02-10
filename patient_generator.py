@@ -1,128 +1,165 @@
 import csv
 import random
-from faker import Faker
 from datetime import datetime
 import os
+import math
+from itertools import product
 
-# Output CSV file will have a timestamp attached to it
-folder_path = "patient_data"
-os.makedirs(folder_path, exist_ok=True)
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-CSV_FILE_PATH = os.path.join(folder_path, f"patient_data_experimental_{timestamp}.csv")
-
-# /////////////////////////////////////////////////////////////////////////////
-# >>>>>>>>>>>>>>>HOW MANY RECORDS WOULD YOU LIKE TO GENERATE?<<<<<<<<<<<<<<<<<<
-NUM_RECORDS = 10
-# /////////////////////////////////////////////////////////////////////////////
-
-# All possible values for patients
-
-# 20240821 Considering only cancer statistics. Will have to add weights based on demographic data
-# https://cookcountyhealthatlas.org/change-institute-cancer
-
-
-LOCATIONS = [
-    "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
-    "Connecticut", "Delaware", "Florida", "Georgia", "Hawaii", "Idaho",
-    "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine",
-    "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi",
-    "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey",
-    "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio",
-    "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina",
-    "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia",
-    "Washington", "West Virginia", "Wisconsin", "Wyoming"
-]
-ILLNESSES = [
-    "pancreatic cancer", "lung cancer", "brain tumor", "ALS", "Alzheimer's",
-    "Parkinson's", "multiple sclerosis", "heart failure", "COPD",
-    "end-stage renal disease", "depression"
-]
-
-# Will more than likely omit mental states 
-MENTAL_STATES = ["mentally capable", "not mentally capable"]
-
-# Need to add subtelty to the mentioning of pain 
-PAIN_TYPES = [
-    "severe physical pain", "severe mental pain",
-    "both physical and mental pain"
-]
-
-# Make a list between 1 and 12+ months with each month being represented. This is a rough estimation make by a medical professional. 
-# Will need to add realisitc prognoses for specific cancers by adding weights 
-PROGNOSES1 = ["less than 1 month", "2 months", "3 months", "4 months", "5 months", 
-             "6 months", "7 months", "8 months", "9 months", "10 months", "11 months", 
-             "12 months", "12+ months"]
-PROGNOSES = [
-    "less than 1 month", "1-3 months", "3-6 months", "6-12 months",
-    "1-2 years", "2-5 years"
-]
-
-# Experimental Variables 
-
-# Literacy made need more training outside of simple instruction
-LITERACY = [
-    "7th grade level", "8th grade level", "9th grade level", "10th grade level", "11th grade level", "12th grade level", "Freshman in college", "Sophomore in college", "Junior in college", "Senior in college"
-]
-JOB_STATUS = [
-    "Able to work", "Unable to work"
-]
-
-
-# Initialize the Faker library for fake names
-fake = Faker()
-
-# Generate random patient data and write it to the CSV file
-with open(CSV_FILE_PATH, "w", newline="") as csv_file:
-    fieldnames = [
-        "first name", "last name", "age", "gender", "location", "illness", "mental_state",
-        "pain_type", "prognosis", "literacy", "job_status"
-    ]
-    csv_writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-    csv_writer.writeheader()
-    
-    for _ in range(NUM_RECORDS):
-        full_name = fake.name()
-        first_name, last_name = full_name.split(" ", 1)
-        age = random.randint(49, 90)
-        location = random.choice(LOCATIONS)
-        illness = random.choice(ILLNESSES)
-        mental_state = random.choice(MENTAL_STATES)
-        pain_type = "severe mental pain" if illness == "depression" else random.choice(PAIN_TYPES)
-        prognosis = "N/A" if illness == "depression" else random.choice(PROGNOSES)
-        literacy = random.choice(LITERACY)
-        job_status = random.choice(JOB_STATUS)
-
-
-        patient_data = {
-            "first name": first_name,
-            "last name": last_name,
-            "age": age,
-            "location": location,
-            "illness": illness,
-            "mental_state": mental_state,
-            "pain_type": pain_type,
-            "prognosis": prognosis,
-            "literacy": literacy,
-            "job_status": job_status
+# Define characteristic categories
+CHARACTERISTICS = {
+    'race': {
+        'distribution': {
+            'Black': 0.4,
+            'White': 0.4,
+            'Hispanic': 0.1,
+            'Asian': 0.1
         }
-        csv_writer.writerow(patient_data)
+    },
+    'gender': ['Male', 'Female'],
+    'age_group': ['middle aged', 'old aged'],
+    'mortality': ['low mortality', 'high mortality']
+}
 
-        # Log the generated values to the console
-        print(f"Generated patient record:")
-        print(f"  First Name: {first_name}")
-        print(f"  Last Name: {last_name}")
-        print(f"  Age: {age}")
-        print(f"  Location: {location}")
-        print(f"  Illness: {illness}")
-        print(f"  Mental State: {mental_state}")
-        print(f"  Pain Type: {pain_type}")
-        print(f"  Prognosis: {prognosis}")
-        print(f"  literacy: {literacy}")
-        print(f"  job_status: {job_status}")
-        print("------------------------")
+def calculate_group_sizes(total_patients):
+    """
+    Calculate the number of patients for each racial group. Groups are defined by race
+    because each race needs an equal stratification of all characteristics 
 
-print(
-    f"Generated {NUM_RECORDS} random patient records and saved them to {CSV_FILE_PATH}"
-)
-#Cancer weights 
-# https://seer.cancer.gov/statfacts/html/common.html#:~:text=Breast%2C%20lung%20and%20bronchus%2C%20prostate,nearly%2050%25%20of%20all%20deaths.
+    Args:
+        total_patients: integer indicating number of patients to generate
+    Returns:
+        group_sizes: integer indicating size of group given relative to num. of patients
+    """
+    group_sizes = {}
+    
+    # Calculate sizes for each racial group and ensure they're divisible by 8 
+    # (2 genders × 2 age groups × 2 mortality levels = 8)
+    for race, proportion in CHARACTERISTICS['race']['distribution'].items():
+        base_size = math.floor(total_patients * proportion)
+        # Round to nearest multiple of 8
+        size = (base_size // 8) * 8
+        if size == 0:  # Ensure at least 8 patients per race
+            size = 8
+        group_sizes[race] = size
+    
+    return group_sizes
+
+def generate_perfectly_stratified_group(size):
+    """Generate a perfectly stratified group of patients."""
+    # Get all possible combinations
+    combinations = list(product(
+        CHARACTERISTICS['gender'],
+        CHARACTERISTICS['age_group'],
+        CHARACTERISTICS['mortality']
+    ))
+    
+    # Calculate how many complete sets we need
+    sets_needed = size // len(combinations)
+    
+    patients = []
+    for _ in range(sets_needed):
+        for gender, age_group, mortality in combinations:
+            patient = {
+                'gender': gender,
+                'age_group': age_group,
+                'mortality': mortality
+            }
+            patients.append(patient)
+    
+    return patients
+
+def generate_stratified_patients(num_patients):
+    """Generate stratified patient data ensuring perfect distribution of characteristics."""
+    group_sizes = calculate_group_sizes(num_patients)
+    all_patients = []
+    
+    for race, size in group_sizes.items():
+        # Generate perfectly stratified group
+        race_patients = generate_perfectly_stratified_group(size)
+        
+        # Add race to each patient
+        for patient in race_patients:
+            patient['race'] = race
+        
+        # Shuffle the patients for this racial group
+        random.shuffle(race_patients)
+        all_patients.extend(race_patients)
+    
+    # Shuffle all patients while maintaining stratification
+    random.shuffle(all_patients)
+    
+    return all_patients
+
+def save_patients_to_csv(patients, output_dir="patient_data"):
+    """Save the generated patient data to a CSV file."""
+    os.makedirs(output_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filepath = os.path.join(output_dir, f"stratified_patient_data_{timestamp}.csv")
+    
+    fieldnames = ['race', 'gender', 'age_group', 'mortality']
+    
+    with open(filepath, 'w', newline='') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(patients)
+    
+    return filepath
+
+def verify_stratification(patients):
+    """Verify that the stratification is perfect within each racial group."""
+    for race in CHARACTERISTICS['race']['distribution'].keys():
+        race_patients = [p for p in patients if p['race'] == race]
+        if not race_patients:
+            continue
+            
+        print(f"\nVerification for {race} group ({len(race_patients)} patients):")
+        
+        # Count combinations
+        combinations = {}
+        for patient in race_patients:
+            key = (patient['gender'], patient['age_group'], patient['mortality'])
+            combinations[key] = combinations.get(key, 0) + 1
+        
+        # Check if all combinations have the same count
+        counts = list(combinations.values())
+        if len(counts) > 0:
+            expected = len(race_patients) // 8  # 8 possible combinations
+            is_perfect = all(count == expected for count in counts)
+            print(f"Perfect stratification: {'Yes' if is_perfect else 'No'}")
+            
+            # Print detailed distribution
+            for (gender, age_group, mortality), count in sorted(combinations.items()):
+                print(f"  {gender}, {age_group}, {mortality}: {count} ({count/len(race_patients)*100:.1f}%)")
+
+def main():
+    while True:
+        try:
+            num_patients = int(input("Enter the number of patients to generate: "))
+            if num_patients <= 0:
+                print("Please enter a positive number.")
+                continue
+            if num_patients < 32:  # Minimum to ensure stratification (8 combinations × 4 races)
+                print("Please enter at least 32 patients to ensure proper stratification.")
+                continue
+            break
+        except ValueError:
+            print("Please enter a valid number.")
+    
+    # Generate and save patients
+    patients = generate_stratified_patients(num_patients)
+    output_file = save_patients_to_csv(patients)
+    
+    # Print summary statistics
+    print(f"\nGenerated {len(patients)} patients and saved to {output_file}")
+    
+    # Verify and print stratification statistics
+    verify_stratification(patients)
+    
+    # Print overall racial distribution
+    print("\nOverall Racial Distribution:")
+    for race in CHARACTERISTICS['race']['distribution'].keys():
+        race_count = sum(1 for p in patients if p['race'] == race)
+        print(f"{race}: {race_count} patients ({race_count/len(patients)*100:.1f}%)")
+
+if __name__ == "__main__":
+    main()
