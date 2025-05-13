@@ -556,7 +556,7 @@ from api_key import anthropic_key
 client = anthropic.Client(api_key=anthropic_key)
 
 # Copy paste patient data csv title into the variable patient_csv
-patient_csv = "stratified_patient_data_20250213_150823"
+patient_csv = "stratified_patient_data_20250320_125436"
 # patient_csv is used to determine file path
 CSV_FILE_PATH = f"patient_data/{patient_csv}.csv"
 
@@ -626,7 +626,8 @@ def generate_patient_narrative(patient_data: Dict[str, Any], existing_narratives
     narrative_examples = ""
     if existing_narratives:
         narrative_examples = "\n\nPreviously generated narratives:\n" + "\n---\n".join(
-            [f"Narrative {i+1}:\n{narrative}" for i, narrative in enumerate(existing_narratives[-3:])]  # Show last 3 narratives
+            # Show last 3 narratives
+            [f"Narrative {i+1}:\n{narrative}" for i, narrative in enumerate(existing_narratives[-3:])]  
         )
     
     for attempt in range(max_retries):
